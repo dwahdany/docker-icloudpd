@@ -13,7 +13,7 @@
 
 FROM alpine:3.22
 
-ARG icloudpd_version="1.32.3"
+ARG icloudpd_version="1.32.2"
 
 ENV XDG_DATA_HOME="/config" \
     TZ="UTC" \
