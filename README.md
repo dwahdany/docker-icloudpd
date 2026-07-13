@@ -46,6 +46,7 @@ Set as environment variables (or in `/config/icloudpd.conf`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `apple_id` | — | your Apple ID (required) |
+| `name` | — | instance name: tags every notification (`[a] …`) and namespaces commands (`a sync`); falls back to the legacy conf's `user` key |
 | `libraries` | `personal` | comma list: `personal`, `shared`, or explicit names |
 | `download_path` | `/icloud` | download target inside the container |
 | `folder_structure` | `{:%Y/%m/%d}` | icloudpd folder structure |
@@ -61,6 +62,23 @@ Set as environment variables (or in `/config/icloudpd.conf`):
 
 Do **not** publish container port 8080 — it is icloudpd's internal MFA
 interface, bridged to Telegram by the supervisor over localhost.
+
+## Multiple accounts / containers
+
+Run one container per Apple ID and give each a `name` (e.g. `a`, `b`):
+
+- every notification is tagged — `[a] 🔐 iCloud needs a new two-factor code…`
+  tells you whether to answer `a 123456` or `b 123456`;
+- a named instance **only** reacts to prefixed commands (`a sync`,
+  `a reauth`, bare `a` = sync now), so instances sharing a chat don't all
+  grab the same message. Migrated volumes pick the name up from the legacy
+  conf's `user=` key automatically.
+
+⚠️ Use a **separate bot token per container**. Telegram delivers each
+`getUpdates` message to exactly one consumer — two containers polling the
+same token steal updates from each other and commands are randomly lost.
+The bots can all sit in one group chat (disable bot privacy mode so they
+see all messages).
 
 Note: Apple's Advanced Data Protection (ADP) is not supported by icloudpd;
 ADP must be disabled for downloads to work.

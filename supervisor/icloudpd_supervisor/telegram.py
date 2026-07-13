@@ -36,20 +36,33 @@ class Command:
     value: str = ""
 
 
-def parse_command(text: str, aliases: tuple[str, ...] = ()) -> Command | None:
+def parse_command(
+    text: str, aliases: tuple[str, ...] = (), require_prefix: bool = False
+) -> Command | None:
     """Parse a Telegram message into a Command.
 
     Accepts bare commands ("sync", "123456") and the old container's
-    "<user> <command>" convention ("boris 123456") for compatibility, where
-    <user> is any of the provided aliases.
+    "<name> <command>" convention ("a 123456"), where <name> is any of the
+    provided aliases. A bare "<name>" on its own means "sync now" (the
+    legacy convention).
+
+    With require_prefix=True, UNprefixed commands are ignored — necessary
+    when several supervisor instances share one chat, so a bare "sync" or
+    2FA code is not consumed by every instance at once.
     """
     words = text.strip().split()
     if not words:
         return None
     lowered = [w.lower() for w in words]
-    if len(words) >= 2 and lowered[0] in tuple(a.lower() for a in aliases):
+    prefixed = False
+    if lowered[0] in tuple(a.lower() for a in aliases if a):
+        if len(words) == 1:
+            return Command("sync")  # bare "<name>" = sync now
         words = words[1:]
         lowered = lowered[1:]
+        prefixed = True
+    if require_prefix and not prefixed:
+        return None
     if len(words) != 1:
         return None
     word, low = words[0], lowered[0]
@@ -183,11 +196,13 @@ class TelegramListener(threading.Thread):
         client: TelegramClient,
         commands: "queue.Queue[Command]",
         aliases: tuple[str, ...] = (),
+        require_prefix: bool = False,
     ) -> None:
         super().__init__(name="telegram-listener", daemon=True)
         self._client = client
         self._commands = commands
         self._aliases = aliases
+        self._require_prefix = require_prefix
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
@@ -197,7 +212,7 @@ class TelegramListener(threading.Thread):
         logger.info("Telegram listener started")
         while not self._stop_event.is_set():
             for text in self._client.poll_updates():
-                command = parse_command(text, self._aliases)
+                command = parse_command(text, self._aliases, self._require_prefix)
                 if command:
                     logger.info("Telegram command received: %s", command.kind)
                     self._commands.put(command)

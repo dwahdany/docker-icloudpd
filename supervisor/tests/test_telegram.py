@@ -169,8 +169,9 @@ class TestParseCommandAliasPrefix:
     def test_unknown_prefix_rejected(self):
         assert parse_command("alice sync", self.ALIASES) is None
 
-    def test_alias_alone_is_not_a_command(self):
-        assert parse_command("boris", self.ALIASES) is None
+    def test_alias_alone_means_sync(self):
+        # Legacy convention: messaging just "<user>" triggers a sync.
+        assert parse_command("boris", self.ALIASES).kind == "sync"
 
     def test_alias_with_multiword_junk_rejected(self):
         assert parse_command("boris sync now", self.ALIASES) is None

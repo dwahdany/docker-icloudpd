@@ -20,6 +20,11 @@ LEGACY_CONF_NAME = "icloudpd.conf"
 # Keys we read from the legacy config file (legacy name -> our name).
 # Anything not listed here is intentionally unsupported by the rewrite.
 _LEGACY_KEYS = {
+    "name": "name",
+    # The legacy container's Telegram command prefix was the local username;
+    # it doubles as the instance-name fallback so migrated multi-account
+    # volumes keep their "a auth" / "b auth" routing.
+    "user": "legacy_user",
     "apple_id": "apple_id",
     "download_path": "download_path",
     "folder_structure": "folder_structure",
@@ -57,6 +62,12 @@ class ConfigError(Exception):
 @dataclass
 class Config:
     apple_id: str = ""
+    # Instance name: prefixes every Telegram notification ("[a] ...") and
+    # namespaces commands ("a sync", "a 123456", bare "a" = sync now). When
+    # set, UNprefixed commands are ignored — required when several
+    # containers share one chat, otherwise all of them would react to a
+    # bare "sync" or 2FA code. Falls back to the legacy conf's `user` key.
+    name: str = ""
     config_dir: str = DEFAULT_CONFIG_DIR
     download_path: str = "/icloud"
     folder_structure: str = "{:%Y/%m/%d}"
@@ -158,6 +169,9 @@ def load_config(environ: dict[str, str] | None = None) -> Config:
 
     cfg = Config(config_dir=config_dir)
     cfg.apple_id = get("apple_id").strip()
+    # NB: the legacy-user fallback reads only the conf FILE, never the
+    # process environment — $USER from the shell must not become a name.
+    cfg.name = (get("name") or legacy.get("legacy_user", "")).strip()
     cfg.download_path = get("download_path", cfg.download_path).rstrip("/") or "/"
     cfg.folder_structure = get("folder_structure", cfg.folder_structure)
     cfg.photo_size = get("photo_size", cfg.photo_size)

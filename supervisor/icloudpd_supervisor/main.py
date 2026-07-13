@@ -83,7 +83,17 @@ def run_supervisor(config: Config) -> int:
             offset_file=str(Path(config.config_dir) / "telegram_update_id.num"),
             sender_id=config.telegram_sender_id,
         )
-        listener = TelegramListener(telegram, commands, aliases=("user", "icloudpd"))
+        if config.name:
+            # Named instance: commands must be prefixed ("a sync"), so
+            # several containers can share one chat without all of them
+            # reacting to a bare "sync" or 2FA code.
+            listener = TelegramListener(
+                telegram, commands, aliases=(config.name,), require_prefix=True
+            )
+        else:
+            listener = TelegramListener(
+                telegram, commands, aliases=("user", "icloudpd")
+            )
         listener.start()
     else:
         logger.warning(

@@ -84,6 +84,11 @@ class Supervisor:
     # --- messaging helpers -------------------------------------------------
 
     def notify(self, text: str, silent: bool = False) -> bool:
+        if self.config.name:
+            # Tag every message with the instance name so users running
+            # several containers against one chat know which config is
+            # talking (and which prefix to reply with).
+            text = f"[{self.config.name}] {text}"
         logger.info("Notify: %s", text)
         if self.telegram:
             return self.telegram.send(text, silent=silent)
@@ -491,14 +496,19 @@ class Supervisor:
         )
 
     def _send_help(self) -> None:
-        self.notify(
-            "Commands:\n"
-            "sync — start a sync now\n"
-            "reauth — get a fresh 2FA cookie\n"
-            "status — show current state\n"
-            "<6-digit code> — answer a 2FA prompt",
-            silent=True,
-        )
+        prefix = f"{self.config.name} " if self.config.name else ""
+        lines = [
+            "Commands:",
+            f"{prefix}sync — start a sync now",
+            f"{prefix}reauth — get a fresh 2FA cookie",
+            f"{prefix}status — show current state",
+            f"{prefix}<6-digit code> — answer a 2FA prompt",
+        ]
+        if self.config.name:
+            lines.append(
+                f"(prefix required — this instance only answers to '{self.config.name}')"
+            )
+        self.notify("\n".join(lines), silent=True)
 
     def _check_cookie_expiry(self) -> None:
         cookie = read_cookie_status(self.config.config_dir, self.config.apple_id)
