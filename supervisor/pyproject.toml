@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "icloudpd-supervisor"
+version = "0.1.0"
+description = "Supervisor for icloudpd: scheduling, Telegram 2FA relay, notifications"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-timeout>=2",
+]
+
+[project.scripts]
+icloudpd-supervisor = "icloudpd_supervisor.main:main"
+
+[tool.setuptools.packages.find]
+include = ["icloudpd_supervisor*"]
+
+[tool.pytest.ini_options]
+timeout = 30
+testpaths = ["tests"]
+filterwarnings = [
+    # Raised by the stdlib itself when the malformed-cookiejar tolerance
+    # tests feed it a broken file; not a defect in this package.
+    "ignore:http.cookiejar bug!:UserWarning",
+]

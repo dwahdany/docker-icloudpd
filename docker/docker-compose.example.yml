@@ -1,0 +1,36 @@
+services:
+  icloudpd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: icloudpd-supervisor:local
+    container_name: icloudpd
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Berlin"
+      apple_id: "you@example.com"
+      # Personal + shared library. Also accepts explicit names from
+      # `icloudpd --list-libraries` (e.g. SharedSync-XXXX-...).
+      libraries: "personal,shared"
+      download_path: "/icloud"
+      folder_structure: "{:%Y/%m/%d}"
+      download_interval: "86400"
+      telegram_token: "123456:ABC-your-bot-token"
+      telegram_chat_id: "123456789"
+      # Lockout protection: max full password sign-ins per rolling 24h.
+      max_auth_per_day: "3"
+      # Filesystem identity for downloads (container drops root to this):
+      user_id: "1000"
+      group_id: "1000"
+      # debug_logging: "true"
+      # extra_icloudpd_args: "--recent 500 --skip-videos"
+    volumes:
+      - ./config:/config
+      - /path/to/your/photos:/icloud
+    # NOTE: do NOT publish port 8080 — it is icloudpd's internal MFA
+    # interface; anyone who can reach it can interfere with authentication.
+
+# First-time setup (stores your iCloud password in the keyring):
+#   docker compose run --rm -it icloudpd icloudpd-supervisor init
+#
+# Telegram commands: sync | reauth | status | help | <6-digit 2FA code>
