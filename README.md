@@ -89,5 +89,5 @@ ADP must be disabled for downloads to work.
 ```sh
 cd supervisor
 pip install -e ".[dev]"
-pytest            # 250 hermetic tests, no network, no real icloudpd
+pytest            # hermetic test suite: no network, no real icloudpd
 ```

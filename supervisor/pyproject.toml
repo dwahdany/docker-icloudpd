@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "icloudpd-supervisor"
-version = "1.0.0a1"
+version = "1.0.0"
 description = "Supervisor for icloudpd: scheduling, Telegram 2FA relay, notifications"
 requires-python = ">=3.11"
 dependencies = [
