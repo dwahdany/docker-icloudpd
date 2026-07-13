@@ -52,8 +52,21 @@ def _drop_privileges(config: Config) -> None:
     os.setgroups([])
     os.setgid(gid)
     os.setuid(uid)
-    os.environ.setdefault("HOME", "/tmp")
     logger.info("Dropped privileges to %d:%d", uid, gid)
+
+
+def _setup_process_env(config: Config) -> None:
+    """Force a coherent environment for us and every icloudpd subprocess.
+
+    Must be UNCONDITIONAL: the container starts as root with HOME=/root, and
+    after the privilege drop the inherited HOME makes the keyring library
+    stat ~/.config/python_keyring/keyringrc.cfg inside /root — a
+    PermissionError for the download user (the legacy container avoided
+    this only because `su` reset HOME). A setdefault is not enough.
+    """
+    os.environ["XDG_DATA_HOME"] = config.config_dir  # keyring_pass.cfg location
+    os.environ["HOME"] = "/tmp"
+    os.environ["XDG_CONFIG_HOME"] = "/tmp/.config"  # keyringrc.cfg lookup, readable
 
 
 def _preflight(config: Config) -> None:
@@ -189,7 +202,7 @@ def main() -> None:
         sys.exit(run_healthcheck(config))
 
     _drop_privileges(config)
-    os.environ["XDG_DATA_HOME"] = config.config_dir  # keyring location, icloudpd compat
+    _setup_process_env(config)
     Path(config.status_file).parent.mkdir(parents=True, exist_ok=True)
 
     if command == "init":
