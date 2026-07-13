@@ -89,9 +89,10 @@ class Config:
     telegram_server: str = ""  # optional self-hosted bot API server (host[:port])
     telegram_http: bool = False  # plain http for self-hosted server
     # Seconds between getUpdates short polls (drops to ~3s while a 2FA
-    # prompt is waiting). Short polling is deliberate: it lets several
-    # instances share one bot token, which long polling cannot.
-    telegram_poll_interval: int = 20
+    # prompt is waiting) — the legacy container's 30s/3s cadence. Short
+    # polling is deliberate: it lets several instances share one bot token,
+    # which long polling cannot.
+    telegram_poll_interval: int = 30
 
     notification_days: int = 7
     auth_china: bool = False

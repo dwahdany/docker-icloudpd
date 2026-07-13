@@ -79,7 +79,7 @@ container: the supervisor short-polls `getUpdates` (long polling would make
 concurrent consumers terminate each other), and Telegram's lazy update
 confirmation means instances with similar polling cadences each see every
 message. Expected command latency is up to `telegram_poll_interval`
-(default 20 s; automatically ~3 s while a 2FA prompt is waiting).
+(default 30 s, the legacy cadence; automatically ~3 s while a 2FA prompt is waiting).
 
 Note: Apple's Advanced Data Protection (ADP) is not supported by icloudpd;
 ADP must be disabled for downloads to work.

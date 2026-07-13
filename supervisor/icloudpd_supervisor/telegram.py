@@ -210,7 +210,7 @@ class TelegramListener(threading.Thread):
         commands: "queue.Queue[Command]",
         aliases: tuple[str, ...] = (),
         require_prefix: bool = False,
-        interval: float = 20.0,
+        interval: float = 30.0,
         urgent_interval: float = 3.0,
         urgent: threading.Event | None = None,
     ) -> None:
