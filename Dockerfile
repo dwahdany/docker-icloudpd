@@ -19,10 +19,15 @@ ENV XDG_DATA_HOME="/config" \
     TZ="UTC" \
     config_dir="/config"
 
+# Build deps are needed on Alpine (musl): PyPI's manylinux wheels target
+# glibc, so pip may compile icloudpd's dependency tree (cryptography/srp/...)
+# from source — same recipe the legacy image used. Removed again after install.
 RUN apk add --no-cache python3 py3-pip tzdata ca-certificates && \
+    apk add --no-cache --virtual build gcc python3-dev libc-dev libffi-dev cargo openssl-dev && \
     python3 -m venv /opt/icloudpd && \
     /opt/icloudpd/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/icloudpd/bin/pip install --no-cache-dir "icloudpd==${icloudpd_version}"
+    /opt/icloudpd/bin/pip install --no-cache-dir "icloudpd==${icloudpd_version}" && \
+    apk del build
 
 COPY supervisor /tmp/supervisor
 RUN /opt/icloudpd/bin/pip install --no-cache-dir /tmp/supervisor && \
