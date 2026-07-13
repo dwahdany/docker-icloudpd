@@ -26,10 +26,14 @@ the supervisor's design rationale lives in [supervisor/README.md](supervisor/REA
 
 ```sh
 cp docker-compose.example.yml docker-compose.yml   # edit: apple_id, paths, telegram
-docker compose build
+docker compose pull
 docker compose run --rm -it icloudpd icloudpd-supervisor init   # store password, first auth
 docker compose up -d
 ```
+
+The image is published by CI to `ghcr.io/dwahdany/docker-icloudpd`
+(`:latest` + per-commit `:<sha>` tags). To build locally instead, swap the
+`image:` line for `build: .` in your compose file.
 
 ## Telegram commands
 

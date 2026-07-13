@@ -1,10 +1,8 @@
 services:
   icloudpd:
-    # Either build locally...
-    build: .
-    image: icloudpd-supervisor:local
-    # ...or use the CI-published image instead of the two lines above:
-    # image: ghcr.io/dwahdany/docker-icloudpd:latest
+    image: ghcr.io/dwahdany/docker-icloudpd:latest
+    # To build locally instead, replace the image line with:
+    # build: .
     container_name: icloudpd
     restart: unless-stopped
     environment:
