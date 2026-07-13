@@ -73,8 +73,11 @@ def _preflight(config: Config) -> None:
 
 
 def run_supervisor(config: Config) -> int:
+    import threading
+
     _preflight(config)
     commands: "queue.Queue[Command]" = queue.Queue()
+    poll_urgency = threading.Event()
     telegram = None
     if config.telegram_enabled:
         telegram = TelegramClient(
@@ -85,14 +88,24 @@ def run_supervisor(config: Config) -> int:
         )
         if config.name:
             # Named instance: commands must be prefixed ("a sync"), so
-            # several containers can share one chat without all of them
+            # several containers can share one chat (and one bot token —
+            # hence short polling in the client) without all of them
             # reacting to a bare "sync" or 2FA code.
             listener = TelegramListener(
-                telegram, commands, aliases=(config.name,), require_prefix=True
+                telegram,
+                commands,
+                aliases=(config.name,),
+                require_prefix=True,
+                interval=config.telegram_poll_interval,
+                urgent=poll_urgency,
             )
         else:
             listener = TelegramListener(
-                telegram, commands, aliases=("user", "icloudpd")
+                telegram,
+                commands,
+                aliases=("user", "icloudpd"),
+                interval=config.telegram_poll_interval,
+                urgent=poll_urgency,
             )
         listener.start()
     else:
@@ -101,7 +114,7 @@ def run_supervisor(config: Config) -> int:
             "Set telegram_token and telegram_chat_id."
         )
 
-    supervisor = Supervisor(config, telegram, commands)
+    supervisor = Supervisor(config, telegram, commands, poll_urgency=poll_urgency)
 
     def handle_term(_signum: int, _frame: object) -> None:
         logger.info("Received SIGTERM, shutting down")

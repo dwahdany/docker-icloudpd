@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 import time
 
 from .config import Config
@@ -44,10 +45,14 @@ class Supervisor:
         commands: "queue.Queue[Command]",
         runner: IcloudpdRunner | None = None,
         webui: WebUIBridge | None = None,
+        poll_urgency: threading.Event | None = None,
     ) -> None:
         self.config = config
         self.telegram = telegram
         self.commands = commands
+        # Set while a 2FA prompt is waiting for a code; the Telegram
+        # listener polls faster while it is set.
+        self.poll_urgency = poll_urgency or threading.Event()
         self.runner = runner or IcloudpdRunner(config)
         self.webui = webui or WebUIBridge()
         self.state = SupervisorState.STARTING
@@ -160,6 +165,7 @@ class Supervisor:
         self._mfa_prompt_delivered = False
         self._mfa_prompt_last_try = 0.0
         self._pending_code = None
+        self.poll_urgency.clear()
 
     def _tick_during_run(self) -> bool:
         """Called ~once/second while icloudpd runs.
@@ -223,6 +229,7 @@ class Supervisor:
             if self._mfa_prompted_at is None:
                 self._mfa_prompted_at = now
                 self._mfa_deadline = now + self.config.mfa_timeout
+                self.poll_urgency.set()  # listener polls faster while we wait
                 self._set_state(SupervisorState.WAITING_FOR_MFA)
                 if not self._auth_recorded_this_run:
                     # Record the budget entry immediately: a kill/restart

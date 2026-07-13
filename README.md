@@ -74,11 +74,12 @@ Run one container per Apple ID and give each a `name` (e.g. `a`, `b`):
   grab the same message. Migrated volumes pick the name up from the legacy
   conf's `user=` key automatically.
 
-⚠️ Use a **separate bot token per container**. Telegram delivers each
-`getUpdates` message to exactly one consumer — two containers polling the
-same token steal updates from each other and commands are randomly lost.
-The bots can all sit in one group chat (disable bot privacy mode so they
-see all messages).
+Sharing **one bot token** across containers works, same as the legacy
+container: the supervisor short-polls `getUpdates` (long polling would make
+concurrent consumers terminate each other), and Telegram's lazy update
+confirmation means instances with similar polling cadences each see every
+message. Expected command latency is up to `telegram_poll_interval`
+(default 20 s; automatically ~3 s while a 2FA prompt is waiting).
 
 Note: Apple's Advanced Data Protection (ADP) is not supported by icloudpd;
 ADP must be disabled for downloads to work.

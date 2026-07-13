@@ -136,12 +136,21 @@ class TelegramClient:
         except OSError as exc:
             logger.warning("Cannot persist Telegram offset: %s", exc)
 
-    def poll_updates(self, timeout: int = 50) -> list[str]:
-        """Long-poll for new messages from the configured chat.
+    def poll_updates(self) -> list[str]:
+        """Short-poll for new messages from the configured chat.
+
+        Deliberately NOT long polling: several supervisor instances may
+        share one bot token (the legacy multi-account setup), and Telegram
+        terminates concurrent long polls with 409 Conflict. Short polls
+        complete in milliseconds, and because Telegram only confirms updates
+        lazily (on the next higher-offset poll), instances with similar
+        polling cadences each see every message — prefix routing does the
+        rest. The rare collision surfaces as a handled error and is retried
+        on the next cycle.
 
         Returns the message texts and advances the persisted offset past
-        every update received (including ones from other chats, which are
-        dropped after being acknowledged).
+        every update received (including ones from other chats/instances,
+        which are dropped after being acknowledged).
         """
         offset = self._load_offset()
         try:
@@ -149,10 +158,9 @@ class TelegramClient:
                 f"{self._base_url}/getUpdates",
                 data={
                     "offset": offset + 1,
-                    "timeout": timeout,
                     "allowed_updates": '["message"]',
                 },
-                timeout=timeout + 15,
+                timeout=15,
             )
             payload = response.json()
         except (requests.RequestException, ValueError) as exc:
@@ -189,7 +197,12 @@ class TelegramClient:
 
 
 class TelegramListener(threading.Thread):
-    """Background thread feeding parsed commands into a queue."""
+    """Background thread feeding parsed commands into a queue.
+
+    Polls at `interval` normally and at `urgent_interval` while the shared
+    `urgent` event is set (the supervisor sets it while a 2FA prompt is
+    waiting for a code — mirroring the legacy container's poll_sleep=3).
+    """
 
     def __init__(
         self,
@@ -197,12 +210,18 @@ class TelegramListener(threading.Thread):
         commands: "queue.Queue[Command]",
         aliases: tuple[str, ...] = (),
         require_prefix: bool = False,
+        interval: float = 20.0,
+        urgent_interval: float = 3.0,
+        urgent: threading.Event | None = None,
     ) -> None:
         super().__init__(name="telegram-listener", daemon=True)
         self._client = client
         self._commands = commands
         self._aliases = aliases
         self._require_prefix = require_prefix
+        self._interval = interval
+        self._urgent_interval = urgent_interval
+        self.urgent = urgent or threading.Event()
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
@@ -219,3 +238,5 @@ class TelegramListener(threading.Thread):
                 else:
                     # Do not log the text itself: it may contain an MFA code.
                     logger.debug("Ignoring unrecognised Telegram message (%d chars)", len(text))
+            wait = self._urgent_interval if self.urgent.is_set() else self._interval
+            self._stop_event.wait(wait)

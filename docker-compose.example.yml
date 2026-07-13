@@ -9,8 +9,8 @@ services:
       TZ: "Europe/Berlin"
       apple_id: "you@example.com"
       # Instance name: tags notifications ("[a] ...") and namespaces
-      # commands ("a sync"). Required when several containers share a chat;
-      # each container then needs its OWN bot token (see README).
+      # commands ("a sync"). Set a unique name per container when several
+      # share a chat/bot (see README).
       # name: "a"
       # Personal + shared library. Also accepts explicit names from
       # `icloudpd --list-libraries` (e.g. SharedSync-XXXX-...).

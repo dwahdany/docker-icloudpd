@@ -210,8 +210,11 @@ class TestPollUpdates:
         call = fake_session.calls[0]
         assert call["url"] == f"{BASE_URL}/getUpdates"
         assert call["data"]["offset"] == 1  # no prior offset -> 0 + 1
-        assert call["data"]["timeout"] == 50
-        assert call["timeout"] == 65  # long-poll timeout + 15s slack
+        # Deliberately a SHORT poll: no timeout parameter. Long polling
+        # breaks multi-instance setups sharing one bot token (Telegram
+        # terminates concurrent long polls with 409 Conflict).
+        assert "timeout" not in call["data"]
+        assert call["timeout"] == 15  # HTTP timeout for the short poll
 
     def test_unauthorised_chat_dropped_but_offset_advances(
         self, fake_session, tmp_path, caplog
@@ -369,13 +372,15 @@ def test_listener_queues_parsed_commands_and_stops():
     listener_box = {}
 
     class FakeClient:
-        def poll_updates(self, timeout=50):
+        def poll_updates(self):
             if batches:
                 return batches.pop(0)
             listener_box["listener"].stop()
             return []
 
-    listener = TelegramListener(FakeClient(), commands, aliases=("boris",))
+    listener = TelegramListener(
+        FakeClient(), commands, aliases=("boris",), interval=0.01
+    )
     listener_box["listener"] = listener
     listener.start()
     listener.join(timeout=10)
