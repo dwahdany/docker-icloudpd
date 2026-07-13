@@ -64,7 +64,7 @@ authentication. Passwords are never sent through Telegram.
 
 ## Configuration
 
-See `docker/docker-compose.example.yml`. Notable settings:
+See `docker-compose.example.yml` at the repo root. Notable settings:
 
 | Variable | Default | Meaning |
 |---|---|---|

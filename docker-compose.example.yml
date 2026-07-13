@@ -1,8 +1,6 @@
 services:
   icloudpd:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    build: .
     image: icloudpd-supervisor:local
     container_name: icloudpd
     restart: unless-stopped

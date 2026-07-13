@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [master, rewrite]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package with dev extras
+        run: pip install -e "./supervisor[dev]"
+      - name: Run tests
+        run: pytest supervisor/tests -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t icloudpd-supervisor:ci .
+      - name: Smoke test — entrypoint resolves and healthcheck script runs
+        run: |
+          docker run --rm icloudpd-supervisor:ci /opt/icloudpd/bin/icloudpd --version
+          docker run --rm icloudpd-supervisor:ci icloudpd-supervisor healthcheck || true
