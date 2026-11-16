@@ -146,6 +146,12 @@ USB through to the container:
       - 'c 189:* rwm'
 ```
 
+A key generated inside the YubiKey has no backup: if the YubiKey breaks,
+register a new one. To have a paper backup, let the key exist as a file
+once: register a file-based key first, print it with
+`scripts/softkey/backup.py`, move it into the YubiKey with
+`piv-setup.py --import-key`, then delete the file.
+
 The container must start as root (the default) so it can hand the YubiKey's
 device node to its unprivileged user. Restart the container after plugging
 the YubiKey in again.
