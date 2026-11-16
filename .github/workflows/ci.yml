@@ -19,6 +19,10 @@ jobs:
           python-version: "3.12"
       - name: Install package with dev extras
         run: pip install -e "./supervisor[dev]"
+      - name: Install yubikit (for the YubiKey-held security key)
+        # Without dependencies, as in the image: only its yubikit library is
+        # used, and its pyscard dependency needs a C build with PC/SC headers.
+        run: pip install --no-deps "yubikey-manager>=5.5,<6"
       - name: Run tests
         run: pytest supervisor/tests -q
 
@@ -63,6 +67,10 @@ jobs:
           docker run --rm smoke /opt/icloudpd/bin/python -c "import fido2, cryptography, srp, keyring, icloudpd.cli, icloudpd_supervisor.softkey_run"
           docker run --rm smoke /opt/icloudpd/bin/python -m icloudpd_supervisor.softkey_run /nonexistent.json --version
           docker run --rm smoke /opt/icloudpd/bin/icloud --help
+          # YubiKey-held key: yubikit and the USB path must load without the
+          # dependencies that are deliberately not installed.
+          # (libusb itself only starts with a USB bus, which CI does not have.)
+          docker run --rm smoke /opt/icloudpd/bin/python -c "import ctypes, usb.core, usb.backend.libusb1, yubikit.piv, yubikit.management; from icloudpd_supervisor import piv; piv._usb_connection_class(); assert hasattr(ctypes.CDLL('libusb-1.0.so.0'), 'libusb_init')"
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

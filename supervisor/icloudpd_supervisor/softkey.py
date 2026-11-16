@@ -11,7 +11,9 @@ of CTAP2 in software. It is used in two places:
   (see ``SoftCtapDevice``).
 
 The key file IS the second factor. Anyone who can read it (together with the
-account password) can sign in to the Apple ID. It is written 0600.
+account password) can sign in to the Apple ID. It is written 0600. The
+exception is a key file set up for a YubiKey (piv.py): there the private key
+is in the YubiKey and the file holds nothing secret.
 
 Only what the above needs is implemented: ES256, no PIN, no resident keys, no
 U2F (CTAP1). User presence is always asserted — that is the point.
@@ -46,6 +48,7 @@ ERR_UNSUPPORTED_ALGORITHM = 0x26
 ERR_UNSUPPORTED_OPTION = 0x2B
 ERR_NO_CREDENTIALS = 0x2E
 ERR_PIN_NOT_SET = 0x35
+ERR_OTHER = 0x7F
 
 _ES256 = -7
 _FLAG_UP = 0x01
@@ -119,9 +122,15 @@ def _new_attestation(aaguid: bytes) -> dict[str, str]:
 class SoftAuthenticator:
     """CTAP2 authenticator backed by a JSON key file."""
 
-    def __init__(self, path: str, log: Callable[[str], None] | None = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        log: Callable[[str], None] | None = None,
+        hardware_sign: Callable[[dict[str, Any], bytes], bytes] | None = None,
+    ) -> None:
         self._path = path
         self._log = log or (lambda _msg: None)
+        self._hardware_sign = hardware_sign
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 self._state = json.load(f)
@@ -200,6 +209,9 @@ class SoftAuthenticator:
         except (ValueError, KeyError, TypeError, IndexError) as error:
             self._log(f"command 0x{command:02x} -> malformed request ({error!r})")
             return bytes([ERR_INVALID_CBOR])
+        except Exception as error:  # noqa: BLE001 - e.g. the YubiKey holding the key is gone
+            self._log(f"command 0x{command:02x} failed: {error}")
+            return bytes([ERR_OTHER])
         return bytes([OK]) + cbor.encode(result)
 
     def _get_info(self) -> dict[int, Any]:
@@ -237,9 +249,17 @@ class SoftAuthenticator:
             if self._find(rp_id, excluded["id"]):
                 raise CtapError(ERR_CREDENTIAL_EXCLUDED)
 
-        private_key = ec.generate_private_key(ec.SECP256R1())
+        # The credential key: in the YubiKey if this key file is set up for one
+        # (only its public half is needed here), else made now and kept in the file.
+        hardware = self._state.get("piv")
+        if hardware:
+            private_key = None
+            public_key = serialization.load_pem_public_key(hardware["public_key"].encode())
+        else:
+            private_key = ec.generate_private_key(ec.SECP256R1())
+            public_key = private_key.public_key()
         credential_id = os.urandom(32)
-        numbers = private_key.public_key().public_numbers()
+        numbers = public_key.public_numbers()  # type: ignore[union-attr]
         cose_key = {
             1: 2,  # kty: EC2
             3: _ES256,
@@ -265,20 +285,20 @@ class SoftAuthenticator:
             auth_data + client_data_hash, ec.ECDSA(hashes.SHA256())
         )
 
-        self._state["credentials"].append(
-            {
-                "id": _b64(credential_id),
-                "rp_id": rp_id,
-                "user_id": _b64(user.get("id", b"")),
-                "user_name": user.get("name", ""),
-                "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "private_key": private_key.private_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PrivateFormat.PKCS8,
-                    serialization.NoEncryption(),
-                ).decode(),
-            }
-        )
+        credential = {
+            "id": _b64(credential_id),
+            "rp_id": rp_id,
+            "user_id": _b64(user.get("id", b"")),
+            "user_name": user.get("name", ""),
+            "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        if private_key is not None:
+            credential["private_key"] = private_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode()
+        self._state["credentials"].append(credential)
         self._save()
         self._log(f"registered a credential for {rp_id} ({user.get('name', '?')})")
         return {
@@ -290,6 +310,20 @@ class SoftAuthenticator:
                 "x5c": [base64.b64decode(attestation["certificate"])],
             },
         }
+
+    def _sign_in_hardware(self, message: bytes) -> bytes:
+        hardware = self._state["piv"]
+        sign = self._hardware_sign
+        if sign is None:
+            from . import piv
+
+            sign = piv.sign
+        signature = sign(hardware, message)
+        # A different YubiKey, or a slot that was overwritten, would produce a
+        # signature Apple rejects; say so here instead.
+        public_key = serialization.load_pem_public_key(hardware["public_key"].encode())
+        public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))  # type: ignore[union-attr, call-arg]
+        return signature
 
     def _get_assertion(self, params: dict[int, Any]) -> dict[int, Any]:
         for key in (1, 2):
@@ -306,15 +340,19 @@ class SoftAuthenticator:
         if cred is None:
             raise CtapError(ERR_NO_CREDENTIALS)
 
-        private_key = serialization.load_pem_private_key(cred["private_key"].encode(), None)
         # Signature counter 0 = "not supported": nothing to persist, nothing to
         # get out of step between the machine that registers and the one that signs.
         auth_data = (
             hashlib.sha256(rp_id.encode()).digest() + bytes([_FLAG_UP]) + struct.pack(">I", 0)
         )
-        signature = private_key.sign(  # type: ignore[union-attr, call-arg]
-            auth_data + client_data_hash, ec.ECDSA(hashes.SHA256())
-        )
+        message = auth_data + client_data_hash
+        if "private_key" in cred:
+            private_key = serialization.load_pem_private_key(cred["private_key"].encode(), None)
+            signature = private_key.sign(  # type: ignore[union-attr, call-arg]
+                message, ec.ECDSA(hashes.SHA256())
+            )
+        else:
+            signature = self._sign_in_hardware(message)
         self._log(f"signed a sign-in challenge for {rp_id}")
         return {
             1: {"id": base64.b64decode(cred["id"]), "type": "public-key"},
@@ -425,12 +463,16 @@ class CtapHidSession:
 # ---- in-process device for python-fido2 (used in the container) ------------------------------
 
 
-def make_ctap_device(path: str, log: Callable[[str], None] | None = None) -> Any:
+def make_ctap_device(
+    path: str,
+    log: Callable[[str], None] | None = None,
+    hardware_sign: Callable[[dict[str, Any], bytes], bytes] | None = None,
+) -> Any:
     """A python-fido2 ``CtapDevice`` that is answered by the key file at ``path``."""
     from fido2.ctap import CtapDevice, CtapError as Fido2CtapError
     from fido2.hid import CAPABILITY, CTAPHID
 
-    authenticator = SoftAuthenticator(path, log)
+    authenticator = SoftAuthenticator(path, log, hardware_sign)
 
     class SoftCtapDevice(CtapDevice):
         @property
