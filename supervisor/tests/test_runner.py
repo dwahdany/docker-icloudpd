@@ -327,3 +327,30 @@ def test_auth_only_args(tmp_path):
     assert _flag_value(args, "--password-provider") == "keyring"
     assert _flag_value(args, "--mfa-provider") == "webui"
     assert _flag_value(args, "--log-level") == "debug"
+
+
+def test_security_key_file_switches_to_the_wrapper_and_console_mfa(tmp_path):
+    key = tmp_path / "softkey.json"
+    key.write_text("{}")
+    runner = make_runner(tmp_path, security_key_file=str(key))
+
+    for args in (runner.sync_args(None), runner.auth_only_args(), runner.list_libraries_args()):
+        assert args[:4] == [sys.executable, "-m", "icloudpd_supervisor.softkey_run", str(key)]
+        assert _flag_value(args, "--mfa-provider") == "console"
+        assert _flag_value(args, "--username") == USER
+
+
+def test_missing_security_key_file_keeps_the_webui_flow(tmp_path):
+    runner = make_runner(tmp_path, security_key_file=str(tmp_path / "softkey.json"))
+
+    args = runner.auth_only_args()
+    assert args[0] == "/nonexistent/icloudpd"
+    assert _flag_value(args, "--mfa-provider") == "webui"
+
+
+def test_icloudpd_cannot_wait_for_typed_input(tmp_path):
+    fake = make_fake_icloudpd(tmp_path, "import sys\nprint('read:', repr(sys.stdin.read()))\n")
+    result = make_runner(tmp_path, fake).run([fake])
+
+    assert result.exit_code == 0
+    assert result.tail == ["read: ''"]

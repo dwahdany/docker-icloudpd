@@ -150,6 +150,30 @@ def main() -> int:
     utils_py = read("pyicloud_ipd/utils.py")
     check("password read via python keyring library", "keyring.get_password" in utils_py)
 
+    # --- software security key (icloudpd_supervisor/softkey_run.py) ---------
+    base_py = read("pyicloud_ipd/base.py")
+    check(
+        "security keys are found through fido2 CtapHidDevice.list_devices (wrapper hook)",
+        "from fido2.hid import CtapHidDevice" in base_py
+        and "CtapHidDevice.list_devices()" in base_py,
+    )
+    check(
+        "security key is asked through Fido2Client.get_assertion",
+        "Fido2Client(" in base_py and "get_assertion(" in base_py,
+    )
+    authentication_py = read("icloudpd/authentication.py")
+    check(
+        "console MFA flow confirms with a security key (the wrapper uses --mfa-provider console)",
+        bool(
+            re.search(
+                r"def request_2fa\(.*?get_security_key_challenge\(\).*?request_security_key\(",
+                authentication_py,
+                re.DOTALL,
+            )
+        ),
+    )
+    check("icloudpd.cli has cli() (wrapper entry point)", "def cli(" in read("icloudpd/cli.py"))
+
     print()
     if FAILED:
         print(f"{len(FAILED)} assumption(s) BROKEN by icloudpd {args.version}:")

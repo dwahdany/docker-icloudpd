@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "icloudpd-supervisor"
-version = "1.0.1"
+version = "1.1.0"
 description = "Supervisor for icloudpd: scheduling, Telegram 2FA relay, notifications"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,6 +15,10 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-timeout>=2",
+    # The software security key is tested against python-fido2 itself. At
+    # run time both come with icloudpd (>= 1.33.0), which pins fido2.
+    "fido2>=2.2,<3",
+    "cryptography",
 ]
 
 [project.scripts]

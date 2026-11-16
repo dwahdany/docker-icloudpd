@@ -3,9 +3,9 @@
 # Design notes:
 # - Base image is PINNED (the old container used alpine:latest, so every
 #   rebuild was a lottery).
-# - icloudpd is installed from PyPI, pinned. 1.32.3 (2026-05-30) includes the
-#   upstream fix for Apple's 2026+ auth flow (PR-1335) — no source build or
-#   cherry-picking required.
+# - icloudpd is installed from PyPI, pinned. 1.32.3 (2026-05-30) brought the
+#   upstream fix for Apple's 2026+ auth flow (PR-1335); 1.33.0 adds sign-in
+#   with security keys, which the software key (softkey.py) relies on.
 # - The supervisor lives in the same venv, so it shares Python and requests.
 # - icloudpd's --mfa-provider webui binds 0.0.0.0:8080 INSIDE the container
 #   during runs. Do not publish that port; the supervisor talks to it over
@@ -13,7 +13,7 @@
 
 FROM alpine:3.22
 
-ARG icloudpd_version="1.32.3"
+ARG icloudpd_version="1.33.0"
 
 ENV XDG_DATA_HOME="/config" \
     TZ="UTC" \

@@ -109,6 +109,11 @@ class Config:
     user_id: int = 1000
     group_id: int = 1000
 
+    # Software security key (see softkey.py). When this file exists, sign-ins
+    # are confirmed with it instead of a code relayed through Telegram.
+    # Defaults to softkey.json under config_dir.
+    security_key_file: str = ""
+
     icloudpd_bin: str = "/opt/icloudpd/bin/icloudpd"
     icloud_bin: str = "/opt/icloudpd/bin/icloud"
     status_file: str = "/tmp/icloudpd/status.json"
@@ -117,6 +122,10 @@ class Config:
     @property
     def auth_domain(self) -> str:
         return "cn" if self.auth_china else "com"
+
+    @property
+    def security_key_enabled(self) -> bool:
+        return bool(self.security_key_file) and Path(self.security_key_file).is_file()
 
     @property
     def telegram_base_url(self) -> str:
@@ -217,6 +226,7 @@ def load_config(environ: dict[str, str] | None = None) -> Config:
     cfg.icloudpd_bin = get("icloudpd_bin", cfg.icloudpd_bin)
     cfg.icloud_bin = get("icloud_bin", cfg.icloud_bin)
     cfg.status_file = get("status_file", cfg.status_file)
+    cfg.security_key_file = get("security_key_file") or str(Path(config_dir) / "softkey.json")
     cfg.state_file = get("state_file") or str(Path(config_dir) / "supervisor_state.json")
 
     cfg.validate()

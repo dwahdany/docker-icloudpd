@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.13)
+include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+project(softkey_bridge C CXX ASM)
+set(CMAKE_C_STANDARD 11)
+pico_sdk_init()
+
+add_executable(softkey_bridge main.c usb_descriptors.c)
+target_include_directories(softkey_bridge PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(softkey_bridge PRIVATE pico_stdlib pico_unique_id tinyusb_device)
+pico_enable_stdio_usb(softkey_bridge 0)
+pico_enable_stdio_uart(softkey_bridge 0)
+pico_add_extra_outputs(softkey_bridge)
