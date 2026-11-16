@@ -135,14 +135,37 @@ def _open_pcsc(serial: int | None) -> Any | None:
     return None
 
 
+def usb_backend() -> Any | None:
+    """libusb for pyusb, also where libraries cannot be looked up by name.
+
+    pyusb finds libusb through ctypes.util.find_library, which finds nothing
+    on Alpine (musl has no ldconfig cache), so fall back to the usual paths.
+    """
+    import os
+
+    import usb.backend.libusb1
+
+    backend = usb.backend.libusb1.get_backend()
+    if backend is None:
+        for path in ("/usr/lib/libusb-1.0.so.0", "/lib/libusb-1.0.so.0"):
+            if os.path.exists(path):
+                backend = usb.backend.libusb1.get_backend(find_library=lambda _name: path)
+                if backend is not None:
+                    break
+    return backend
+
+
 def _open_usb(serial: int | None) -> Any | None:
     try:
         import usb.core
     except ImportError:
         return None
+    backend = usb_backend()
+    if backend is None:
+        raise PivError("libusb is not installed, so the YubiKey cannot be reached over USB")
     connection_class = _usb_connection_class()
     last_error: Exception | None = None
-    for device in usb.core.find(find_all=True, idVendor=YUBICO_VENDOR_ID):
+    for device in usb.core.find(find_all=True, idVendor=YUBICO_VENDOR_ID, backend=backend):
         try:
             connection = connection_class(device)
         except (PivError, usb.core.USBError) as error:
