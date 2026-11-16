@@ -117,6 +117,39 @@ board) does that as a dumb USB bridge; the key itself never leaves the Mac.
 5. Copy `softkey.json` into the container's `/config`, owned by the
    container user and mode `600`. Set `security_key_file` to use another path.
 
+#### Keeping the private key in a YubiKey
+
+A YubiKey cannot confirm an unattended sign-in itself (its FIDO function
+insists on a touch), but it can hold the software key's private key in its
+PIV function, where a key cannot be read out and can sign without touch.
+The key file then holds nothing secret, and pulling the YubiKey out of the
+server stops every further sign-in. Whoever controls the server can still
+have sign-ins confirmed for as long as the YubiKey stays plugged in, and
+sessions issued before it was pulled stay valid until they expire.
+
+Replace step 2 above with:
+
+```sh
+scripts/softkey/piv-setup.py --key ~/.config/icloudpd-softkey/softkey.json
+```
+
+It creates the key inside the YubiKey (a free PIV slot; nothing existing is
+overwritten) and writes a key file that points to it. Unplug the YubiKey,
+then continue with `bridge.py` and step 3. For step 4 and from then on the
+YubiKey has to be plugged in where the sign-in happens. On the server, pass
+USB through to the container:
+
+```yaml
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - 'c 189:* rwm'
+```
+
+The container must start as root (the default) so it can hand the YubiKey's
+device node to its unprivileged user. Restart the container after plugging
+the YubiKey in again.
+
 Apple's documentation asks for FIDO Certified keys; a software key is not
 certified. Apple accepted it when this was written (November 2026) and may
 stop doing so.

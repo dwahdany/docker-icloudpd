@@ -6,8 +6,9 @@
 #
 # Signs in with icloudpd exactly as the container does (same wrapper, same
 # key file), into a temporary directory that is deleted afterwards. You type
-# the iCloud password at icloudpd's prompt; nothing is stored. No USB key and
-# no Pico are involved: the key file answers Apple's challenge.
+# the iCloud password at icloudpd's prompt; nothing is stored. No Pico is
+# involved: the key file answers Apple's challenge. If the key file points to
+# a YubiKey (piv-setup.py), that YubiKey must be plugged in; it is not touched.
 set -euo pipefail
 
 APPLE_ID=${1:?usage: verify.sh <apple-id> [key-file] [com|cn]}
@@ -31,7 +32,7 @@ TMP=$(mktemp -d)
 chmod 700 "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
-uv run --no-project -q --with "icloudpd @ $WHEEL" --with "$REPO/supervisor" \
+uv run --no-project -q --with "icloudpd @ $WHEEL" --with "$REPO/supervisor" --with "yubikey-manager>=5.5,<6" \
   python -m icloudpd_supervisor.softkey_run "$KEY" \
   --username "$APPLE_ID" --cookie-directory "$TMP" --domain "$DOMAIN" \
   --auth-only --password-provider console --mfa-provider console

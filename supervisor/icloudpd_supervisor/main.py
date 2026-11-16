@@ -55,6 +55,39 @@ def _drop_privileges(config: Config) -> None:
     logger.info("Dropped privileges to %d:%d", uid, gid)
 
 
+def _grant_security_key_usb(config: Config) -> None:
+    """Let the unprivileged user talk to the YubiKey that holds the security key.
+
+    Only when the key file points to a YubiKey (piv.py). USB device nodes
+    belong to root, and the whole process is about to drop privileges, so the
+    nodes of the plugged-in YubiKeys are handed to the target user now. A
+    YubiKey plugged in later gets a new node: restart the container for it.
+    """
+    if os.getuid() != 0 or not config.security_key_enabled:
+        return
+    try:
+        import json
+
+        if "piv" not in json.loads(Path(config.security_key_file).read_text()):
+            return
+    except (OSError, ValueError):
+        return
+    from . import piv
+
+    nodes = piv.usb_device_nodes()
+    if not nodes:
+        logger.warning(
+            "The security key file needs a YubiKey, but none is visible. Pass "
+            "/dev/bus/usb through to the container and plug the YubiKey in."
+        )
+    for node in nodes:
+        try:
+            os.chown(node, config.user_id, config.group_id)
+            logger.info("YubiKey at %s made accessible to %d", node, config.user_id)
+        except OSError as exc:
+            logger.warning("Cannot hand %s to user %d: %s", node, config.user_id, exc)
+
+
 def _setup_process_env(config: Config) -> None:
     """Force a coherent environment for us and every icloudpd subprocess.
 
@@ -201,6 +234,7 @@ def main() -> None:
     if command == "healthcheck":
         sys.exit(run_healthcheck(config))
 
+    _grant_security_key_usb(config)
     _drop_privileges(config)
     _setup_process_env(config)
     Path(config.status_file).parent.mkdir(parents=True, exist_ok=True)

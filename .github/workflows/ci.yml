@@ -63,6 +63,9 @@ jobs:
           docker run --rm smoke /opt/icloudpd/bin/python -c "import fido2, cryptography, srp, keyring, icloudpd.cli, icloudpd_supervisor.softkey_run"
           docker run --rm smoke /opt/icloudpd/bin/python -m icloudpd_supervisor.softkey_run /nonexistent.json --version
           docker run --rm smoke /opt/icloudpd/bin/icloud --help
+          # YubiKey-held key: yubikit and the USB path must load without the
+          # dependencies that are deliberately not installed.
+          docker run --rm smoke /opt/icloudpd/bin/python -c "import usb.core, yubikit.piv, yubikit.management; from icloudpd_supervisor import piv; piv._usb_connection_class(); print(list(usb.core.find(find_all=True)))"
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

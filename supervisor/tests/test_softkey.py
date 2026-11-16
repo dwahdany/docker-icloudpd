@@ -208,3 +208,109 @@ def test_wrapper_makes_icloudpd_find_the_software_key(tmp_path, monkeypatch):
     assert softkey_run.main([str(path), "--auth-only", "--mfa-provider", "console"]) == 0
     assert seen["argv"] == ["icloudpd", "--auth-only", "--mfa-provider", "console"]
     server.authenticate_complete(state, [credential], seen["assertion"])
+
+
+# ---- private key held by a YubiKey (PIV) -------------------------------------------------------
+
+
+class _FakeYubiKey:
+    """Stands in for piv.sign: holds the private key, counts what it signs."""
+
+    def __init__(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        self.key = ec.generate_private_key(ec.SECP256R1())
+        self.public_pem = self.key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode()
+        self.signed = 0
+        self.unplugged = False
+
+    def sign(self, piv, message):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        assert piv["slot"] == "82"
+        if self.unplugged:
+            raise RuntimeError("YubiKey is not plugged in")
+        self.signed += 1
+        return self.key.sign(message, ec.ECDSA(hashes.SHA256()))
+
+
+def _piv_key_file(path, yubikey):
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "aaguid": "00" * 16,
+                "piv": {"serial": 1234, "slot": "82", "public_key": yubikey.public_pem},
+                "credentials": [],
+            }
+        )
+    )
+
+
+def _piv_client(path, yubikey):
+    return Fido2Client(
+        softkey.make_ctap_device(str(path), hardware_sign=yubikey.sign),
+        client_data_collector=DefaultClientDataCollector(ORIGIN),
+    )
+
+
+def _piv_register(path, yubikey, server):
+    options, state = server.register_begin(
+        PublicKeyCredentialUserEntity(id=b"user-1", name="someone@example.com"),
+        user_verification=UserVerificationRequirement.DISCOURAGED,
+    )
+    response = _piv_client(path, yubikey).make_credential(options.public_key)
+    return server.register_complete(state, response).credential_data
+
+
+def test_yubikey_backed_key_file_holds_no_private_key_and_signs_through_the_yubikey(tmp_path):
+    path = tmp_path / "softkey.json"
+    yubikey = _FakeYubiKey()
+    _piv_key_file(path, yubikey)
+    server = Fido2Server(PublicKeyCredentialRpEntity(id="apple.com", name="Apple"))
+
+    credential = _piv_register(path, yubikey, server)
+    assert yubikey.signed == 0  # registering needs only the public key: YubiKey can be unplugged
+    stored = json.loads(path.read_text())
+    assert "private_key" not in stored["credentials"][0]
+    assert "PRIVATE KEY" not in json.dumps(stored["credentials"])
+
+    options, state = server.authenticate_begin(
+        [credential], user_verification=UserVerificationRequirement.DISCOURAGED
+    )
+    assertion = _piv_client(path, yubikey).get_assertion(options.public_key).get_response(0)
+    server.authenticate_complete(state, [credential], assertion)
+    assert yubikey.signed >= 1
+
+
+def test_pulling_the_yubikey_stops_sign_ins(tmp_path):
+    from fido2.client import ClientError
+
+    path = tmp_path / "softkey.json"
+    yubikey = _FakeYubiKey()
+    _piv_key_file(path, yubikey)
+    server = Fido2Server(PublicKeyCredentialRpEntity(id="apple.com", name="Apple"))
+    credential = _piv_register(path, yubikey, server)
+
+    yubikey.unplugged = True
+    options, _state = server.authenticate_begin([credential])
+    with pytest.raises(ClientError):
+        _piv_client(path, yubikey).get_assertion(options.public_key)
+
+
+def test_a_different_yubikey_is_refused_before_apple_sees_the_signature(tmp_path):
+    from fido2.client import ClientError
+
+    path = tmp_path / "softkey.json"
+    yubikey = _FakeYubiKey()
+    _piv_key_file(path, yubikey)
+    server = Fido2Server(PublicKeyCredentialRpEntity(id="apple.com", name="Apple"))
+    credential = _piv_register(path, yubikey, server)
+
+    options, _state = server.authenticate_begin([credential])
+    with pytest.raises(ClientError):
+        _piv_client(path, _FakeYubiKey()).get_assertion(options.public_key)
