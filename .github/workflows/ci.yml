@@ -19,6 +19,10 @@ jobs:
           python-version: "3.12"
       - name: Install package with dev extras
         run: pip install -e "./supervisor[dev]"
+      - name: Install yubikit (for the YubiKey-held security key)
+        # Without dependencies, as in the image: only its yubikit library is
+        # used, and its pyscard dependency needs a C build with PC/SC headers.
+        run: pip install --no-deps "yubikey-manager>=5.5,<6"
       - name: Run tests
         run: pytest supervisor/tests -q
 
