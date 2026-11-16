@@ -121,3 +121,44 @@ def test_slot_is_read_as_hex():
 
     assert piv.slot_of({"slot": "82"}) == SLOT.RETIRED1
     assert piv.slot_of({"slot": "9c"}) == SLOT.SIGNATURE
+
+
+def test_sign_retries_while_the_yubikey_is_busy(monkeypatch):
+    calls = []
+
+    class _Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def open_connection(serial):
+        calls.append(serial)
+        if len(calls) < 3:
+            raise piv.PivError("busy")
+        return _Connection()
+
+    class _Session:
+        def __init__(self, _connection):
+            pass
+
+        def sign(self, slot, key_type, message, hash_algorithm):
+            return b"signature"
+
+    import yubikit.piv
+
+    monkeypatch.setattr(piv, "open_connection", open_connection)
+    monkeypatch.setattr(yubikit.piv, "PivSession", _Session)
+
+    assert piv.sign({"serial": 7, "slot": "82"}, b"m", pause=0) == b"signature"
+    assert calls == [7, 7, 7]
+
+
+def test_sign_gives_up_when_the_yubikey_is_gone(monkeypatch):
+    def open_connection(_serial):
+        raise piv.PivError("YubiKey 7 is not plugged in")
+
+    monkeypatch.setattr(piv, "open_connection", open_connection)
+    with pytest.raises(piv.PivError, match="not plugged in"):
+        piv.sign({"serial": 7, "slot": "82"}, b"m", attempts=2, pause=0)
