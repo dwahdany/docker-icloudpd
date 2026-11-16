@@ -58,6 +58,11 @@ jobs:
         run: |
           docker build -q -t smoke .
           docker run --rm smoke /opt/icloudpd/bin/icloudpd --version
+          # icloudpd must be importable (pure-Python install): the software
+          # security key runs inside its process.
+          docker run --rm smoke /opt/icloudpd/bin/python -c "import fido2, cryptography, srp, keyring, icloudpd.cli, icloudpd_supervisor.softkey_run"
+          docker run --rm smoke /opt/icloudpd/bin/python -m icloudpd_supervisor.softkey_run /nonexistent.json --version
+          docker run --rm smoke /opt/icloudpd/bin/icloud --help
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
