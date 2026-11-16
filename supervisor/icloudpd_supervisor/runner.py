@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -50,10 +51,23 @@ class IcloudpdRunner:
 
     # --- command construction -------------------------------------------
 
+    def _command(self) -> list[str]:
+        """How to start icloudpd. With a software security key, through the
+        wrapper that lets icloudpd find that key (same Python, same venv)."""
+        cfg = self._config
+        if cfg.security_key_enabled:
+            return [sys.executable, "-m", "icloudpd_supervisor.softkey_run", cfg.security_key_file]
+        return [cfg.icloudpd_bin]
+
+    def _mfa_provider(self) -> str:
+        # Only icloudpd's console flow handles security keys; it needs no
+        # input when the key answers, and stdin is closed in case it does not.
+        return "console" if self._config.security_key_enabled else "webui"
+
     def sync_args(self, library: str | None) -> list[str]:
         cfg = self._config
         args = [
-            cfg.icloudpd_bin,
+            *self._command(),
             "--username", cfg.apple_id,
             "--cookie-directory", cfg.config_dir,
             "--directory", cfg.download_path,
@@ -63,7 +77,7 @@ class IcloudpdRunner:
             "--no-progress-bar",
             "--log-level", "debug",
             "--password-provider", "keyring",
-            "--mfa-provider", "webui",
+            "--mfa-provider", self._mfa_provider(),
         ]
         if library:
             args += ["--library", library]
@@ -77,26 +91,26 @@ class IcloudpdRunner:
     def auth_only_args(self) -> list[str]:
         cfg = self._config
         return [
-            cfg.icloudpd_bin,
+            *self._command(),
             "--username", cfg.apple_id,
             "--cookie-directory", cfg.config_dir,
             "--domain", cfg.auth_domain,
             "--auth-only",
             "--log-level", "debug",
             "--password-provider", "keyring",
-            "--mfa-provider", "webui",
+            "--mfa-provider", self._mfa_provider(),
         ]
 
     def list_libraries_args(self) -> list[str]:
         cfg = self._config
         return [
-            cfg.icloudpd_bin,
+            *self._command(),
             "--username", cfg.apple_id,
             "--cookie-directory", cfg.config_dir,
             "--domain", cfg.auth_domain,
             "--list-libraries",
             "--password-provider", "keyring",
-            "--mfa-provider", "webui",
+            "--mfa-provider", self._mfa_provider(),
         ]
 
     # --- execution -------------------------------------------------------
@@ -132,6 +146,7 @@ class IcloudpdRunner:
 
         process = subprocess.Popen(
             args,
+            stdin=subprocess.DEVNULL,  # never wait for typed input
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

@@ -81,6 +81,61 @@ confirmation means instances with similar polling cadences each see every
 message. Expected command latency is up to `telegram_poll_interval`
 (default 30 s, the legacy cadence; automatically ~3 s while a 2FA prompt is waiting).
 
+## Security keys (FIDO)
+
+An Apple ID protected by security keys never gets a six-digit code, so the
+Telegram relay cannot authenticate it — do not answer its code prompt on such
+an account. There are two ways to run the container with one.
+
+### Software security key (unattended)
+
+Register one more "security key" that is just a file, and give that file to
+the container. When `softkey.json` exists in `/config`, the supervisor
+confirms every sign-in with it: an expired session renews itself at the next
+sync, with no code, no key to touch and no Telegram round trip.
+
+**The file is a second factor for the whole Apple ID.** Together with the
+password (which `/config` also holds) it is enough to sign in. Keep `/config`
+private, keep it out of unencrypted backups, and remove the key under
+*Sign-In & Security → Security Keys* if the server is ever compromised.
+
+Apple only adds keys through Settings on an Apple device, so the file has to
+look like a USB key once, to a Mac. A Raspberry Pi Pico (any RP2040/RP2350
+board) does that as a dumb USB bridge; the key itself never leaves the Mac.
+
+1. Build `scripts/softkey/firmware` with the Pico SDK (its `shell.nix` has
+   the command) and copy
+   `softkey_bridge.uf2` to the board (hold BOOTSEL while plugging it in).
+2. Run `scripts/softkey/bridge.py --key ~/.config/icloudpd-softkey/softkey.json`
+   (`--self-test` checks the USB path first, without Apple).
+3. Unplug other security keys, then on the Mac: *System Settings → Apple
+   Account → Sign-In & Security → Security Keys → Add Security Key*. The
+   bridge answers by itself after two seconds.
+4. Stop the bridge and unplug the board; it is not needed again. Check the
+   key with `scripts/softkey/verify.sh <apple-id>` (a real sign-in into a
+   temporary directory).
+5. Copy `softkey.json` into the container's `/config`, owned by the
+   container user and mode `600`. Set `security_key_file` to use another path.
+
+Apple's documentation asks for FIDO Certified keys; a software key is not
+certified. Apple accepted it when this was written (November 2026) and may
+stop doing so.
+
+### Copying a session from a machine with the key
+
+Without a software key, sign in on a machine that has a hardware key and copy
+the session into the container's `/config`:
+
+```sh
+scripts/copy-session.sh --check /path/on/host/to/config   # show the plan only
+scripts/copy-session.sh /path/on/host/to/config           # sign in here, install there
+```
+
+It runs `icloudpd --auth-only` (1.33.0, via `uvx`) locally, then stops the
+container, backs up the old cookie and session, installs the new ones and
+starts the container again. Repeat when the session expires. `--help` lists
+the options (ssh host, Apple ID, container name).
+
 Note: Apple's Advanced Data Protection (ADP) is not supported by icloudpd;
 ADP must be disabled for downloads to work.
 

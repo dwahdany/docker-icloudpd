@@ -522,6 +522,8 @@ class Supervisor:
         days = cookie.days_remaining
         if days is None or days > self.config.notification_days:
             return
+        if self.config.security_key_enabled:
+            return  # the next sync signs in again by itself; nothing to ask for
         if time.time() - self.persisted.last_expiry_warning < 86400:
             return
         self.persisted.last_expiry_warning = time.time()
