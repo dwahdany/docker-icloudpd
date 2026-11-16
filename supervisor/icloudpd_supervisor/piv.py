@@ -187,14 +187,30 @@ def slot_of(piv: dict[str, Any]) -> Any:
     return SLOT(int(str(piv["slot"]), 16))
 
 
-def sign(piv: dict[str, Any], message: bytes) -> bytes:
-    """ECDSA P-256 / SHA-256 signature (DER) by the key in the configured slot."""
+def sign(
+    piv: dict[str, Any], message: bytes, attempts: int = 10, pause: float = 1.0
+) -> bytes:
+    """ECDSA P-256 / SHA-256 signature (DER) by the key in the configured slot.
+
+    Retried for a few seconds: two containers may share one YubiKey, and only
+    one of them can hold its USB interface at a time.
+    """
+    import time
+
     from yubikit.piv import KEY_TYPE, PivSession
 
-    with open_connection(piv.get("serial")) as connection:
-        return PivSession(connection).sign(
-            slot_of(piv), KEY_TYPE.ECCP256, message, hashes.SHA256()
-        )
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(pause)
+        try:
+            with open_connection(piv.get("serial")) as connection:
+                return PivSession(connection).sign(
+                    slot_of(piv), KEY_TYPE.ECCP256, message, hashes.SHA256()
+                )
+        except Exception as error:  # noqa: BLE001 - USB busy, YubiKey just replugged, ...
+            last_error = error
+    raise PivError(f"the YubiKey did not sign after {attempts} attempts: {last_error}")
 
 
 def usb_device_nodes() -> list[str]:
