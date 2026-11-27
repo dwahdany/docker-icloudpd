@@ -97,8 +97,12 @@ def main() -> int:
     check("server has POST /code route", '"/code"' in server_py)
     check("server has GET /status route", '"/status"' in server_py)
     check(
-        "waitress.serve called without host/port overrides (default 0.0.0.0:8080)",
-        re.search(r"waitress\.serve\(app\)", server_py) is not None,
+        "waitress.serve called without port override, host 0.0.0.0 unless --webui-host (0.0.0.0:8080)",
+        re.search(r"waitress\.serve\(app\)", server_py) is not None
+        or (
+            re.search(r"waitress\.serve\(app, host=host\)", server_py) is not None
+            and 'host: str = "0.0.0.0"' in server_py
+        ),
     )
 
     # --- auth flow (scheduler MFA round-trip) -------------------------------
@@ -123,6 +127,12 @@ def main() -> int:
         "--log-level",
     ):
         check(f"CLI flag {flag}", flag in cli_or_base)
+
+    # --- error reports (runner.py _LOG_LINE) ---------------------------------
+    check(
+        "log lines are '<date> <time> <LEVEL> <message>' (failure notifications)",
+        '"%(asctime)s %(levelname)-8s %(message)s"' in read("icloudpd/base.py"),
+    )
 
     mfa_provider_py = read("icloudpd/mfa_provider.py")
     check("MFAProvider has WEBUI", "WEBUI" in mfa_provider_py)

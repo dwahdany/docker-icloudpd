@@ -153,6 +153,53 @@ def test_run_tail_keeps_only_last_lines(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_run_messages_keep_the_error_that_a_debug_dump_pushes_out_of_the_tail(tmp_path):
+    # A failed run as icloudpd 1.33/1.34 prints it with --log-level debug:
+    # the reason at INFO, then one DEBUG record with the sign-in responses as
+    # indented JSON (icloudpd/base.py: logger.info(error); dump_responses()).
+    error = "2026-11-26 16:30:21 INFO     Apple iCloud Photo Library has not finished indexing yet"
+    dump = ["2026-11-26 16:30:21 DEBUG    {", '  "response": {']
+    dump += [f'    "field{i}": true,' for i in range(60)]
+    dump += ["  }", "}"]
+    lines = [
+        "2026-11-26 16:29:17 INFO     Processing user: user@example.com",
+        "2026-11-26 16:29:17 DEBUG    Authenticating...",
+        error,
+        *dump,
+    ]
+    script = make_fake_icloudpd(tmp_path, script_printing(lines, exit_code=1))
+    result = make_runner(tmp_path, script).run([script])
+
+    assert result.exit_code == 1
+    assert result.tail == dump[-40:]  # the error line is long gone from the tail
+    assert result.messages == [lines[0], error]
+
+
+def test_run_messages_keep_a_traceback_after_a_debug_dump(tmp_path):
+    lines = [
+        "2026-11-26 16:30:21 DEBUG    {",
+        '  "response": {}',
+        "}",
+        "Traceback (most recent call last):",
+        '  File "/opt/icloudpd/bin/icloudpd", line 8, in <module>',
+        "    sys.exit(cli())",
+        "KeyError: 'salt'",
+        "[softkey] printed without the logger",
+    ]
+    script = make_fake_icloudpd(tmp_path, script_printing(lines, exit_code=1))
+    result = make_runner(tmp_path, script).run([script])
+
+    assert result.messages == lines[3:]
+
+
+def test_run_messages_keep_only_last_lines(tmp_path):
+    lines = [f"2026-11-26 16:30:{i:02d} INFO     message {i}" for i in range(30)]
+    script = make_fake_icloudpd(tmp_path, script_printing(lines))
+    result = make_runner(tmp_path, script).run([script], message_lines=4)
+
+    assert result.messages == lines[-4:]
+
+
 def test_tick_false_terminates_process(tmp_path):
     script = make_fake_icloudpd(
         tmp_path,
