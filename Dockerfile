@@ -8,6 +8,10 @@
 #   with its own Python: nothing in it can be imported, and the software
 #   security key (softkey_run.py) has to run inside icloudpd's process.
 #   1.33.0 is the first release that signs in with security keys.
+# - patches/icloudpd-<version>/ holds upstream fixes that are merged but not
+#   released yet, as diffs against the installed packages. They are applied
+#   only to the icloudpd version they are named for, so bumping the pin drops
+#   them, and a patch that does not apply fails the build.
 # - yubikey-manager (for a security key held in a YubiKey, piv.py) is
 #   installed WITHOUT its dependencies: only its `yubikit` library is used,
 #   which needs nothing beyond what icloudpd already brings. Its command line
@@ -20,7 +24,7 @@
 
 FROM alpine:3.22
 
-ARG icloudpd_version="1.33.0"
+ARG icloudpd_version="1.34.0"
 
 ENV XDG_DATA_HOME="/config" \
     TZ="UTC" \
@@ -38,6 +42,17 @@ RUN apk add --no-cache python3 py3-pip tzdata ca-certificates libusb && \
     /opt/icloudpd/bin/pip install --no-cache-dir pyusb && \
     /opt/icloudpd/bin/pip install --no-cache-dir --no-deps "yubikey-manager>=5.5,<6" && \
     apk del build
+
+COPY patches /tmp/patches
+RUN apk add --no-cache --virtual patching patch && \
+    site="$(/opt/icloudpd/bin/python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" && \
+    for file in /tmp/patches/icloudpd-${icloudpd_version}/*.patch; do \
+        [ -e "${file}" ] || continue; \
+        echo "Applying ${file}" && patch -p1 -d "${site}" < "${file}" || exit 1; \
+    done && \
+    /opt/icloudpd/bin/python -m compileall -q "${site}/icloudpd" "${site}/pyicloud_ipd" && \
+    apk del patching && \
+    rm -rf /tmp/patches
 
 COPY supervisor /tmp/supervisor
 RUN /opt/icloudpd/bin/pip install --no-cache-dir /tmp/supervisor && \

@@ -63,6 +63,28 @@ Set as environment variables (or in `/config/icloudpd.conf`):
 Do **not** publish container port 8080 — it is icloudpd's internal MFA
 interface, bridged to Telegram by the supervisor over localhost.
 
+### "Apple iCloud Photo Library has not finished indexing yet"
+
+icloudpd asks iCloud whether a library has finished indexing before it lists
+it, and stops when the answer is not `FINISHED`. Since 2026-11-17 many
+personal libraries answer `RUNNING` or `FAILED` ("No index with requested
+name: CPLContainerRelation…") for weeks, although they list completely
+([icloudpd #1387](https://github.com/icloud-photos-downloader/icloud_photos_downloader/issues/1387),
+[#1361](https://github.com/icloud-photos-downloader/icloud_photos_downloader/issues/1361)).
+To sync anyway, set
+
+```yaml
+environment:
+  - extra_icloudpd_args=--ignore-indexing-state
+```
+
+on every container of that account: the personal library is checked first
+even when only the shared library is synced. icloudpd refuses the option
+together with options that delete. With it, a sync starts a minute or two
+later (the check still runs), and it changes nothing once iCloud answers
+`FINISHED` again. The image carries the upstream fix for the `FAILED` answers
+(`patches/icloudpd-1.34.0/`), which icloudpd 1.34.0 itself does not have yet.
+
 ## Multiple accounts / containers
 
 Run one container per Apple ID and give each a `name` (e.g. `a`, `b`):
