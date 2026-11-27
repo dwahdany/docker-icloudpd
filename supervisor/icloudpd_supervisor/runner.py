@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 _DOWNLOAD_MARKER = re.compile(r"Downloading (?P<path>/\S.*)")
 _ALREADY_DOWNLOADED = re.compile(r"already exists", re.IGNORECASE)
 
+# icloudpd's own log lines: "%(asctime)s %(levelname)-8s %(message)s"
+# (icloudpd/base.py create_logger). Every run is started with --log-level
+# debug, and a failed one ends with a DEBUG record that dumps the sign-in
+# responses as indented JSON, far more lines than the tail keeps. The line
+# that says what went wrong is logged just before that dump, so error reports
+# quote the lines above DEBUG instead of the last lines printed.
+_LOG_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?P<level>[A-Z]+)\s")
+
 
 @dataclass
 class RunResult:
@@ -42,6 +50,7 @@ class RunResult:
     downloaded: int = 0
     timed_out: bool = False
     tail: list[str] = field(default_factory=list)  # last output lines, for error reports
+    messages: list[str] = field(default_factory=list)  # last lines above DEBUG, same use
     output_lines: list[str] = field(default_factory=list)  # full output when collected
 
 
@@ -131,6 +140,7 @@ class IcloudpdRunner:
         timeout: float | None = None,
         tail_lines: int = 40,
         collect_output: bool = False,
+        message_lines: int = 20,
     ) -> RunResult:
         """Run icloudpd, streaming output to the log.
 
@@ -142,6 +152,7 @@ class IcloudpdRunner:
         logger.info("Running: %s", " ".join(args))
         result = RunResult(exit_code=-1, duration=0.0)
         tail: list[str] = []
+        messages: list[str] = []
         token_before = self._session_token()
 
         process = subprocess.Popen(
@@ -156,12 +167,23 @@ class IcloudpdRunner:
 
         def consume() -> None:
             assert process.stdout is not None
+            in_debug_record = False
             for line in process.stdout:
                 line = line.rstrip("\n")
                 if line:
                     logger.debug("[icloudpd] %s", line)
                     tail.append(line)
                     del tail[:-tail_lines]
+                    log_line = _LOG_LINE.match(line)
+                    if log_line:
+                        in_debug_record = log_line["level"] == "DEBUG"
+                    elif in_debug_record and not line[0].isspace() and line[0] not in "}]":
+                        # Not a continuation of the dump: a traceback, or
+                        # something printed without the logger.
+                        in_debug_record = False
+                    if not in_debug_record:
+                        messages.append(line)
+                        del messages[:-message_lines]
                     if collect_output:
                         result.output_lines.append(line)
                     if _DOWNLOAD_MARKER.search(line) and not _ALREADY_DOWNLOADED.search(line):
@@ -204,6 +226,7 @@ class IcloudpdRunner:
         result.exit_code = process.returncode if process.returncode is not None else -1
         result.duration = time.monotonic() - start
         result.tail = tail
+        result.messages = messages
         token_after = self._session_token()
         result.performed_password_auth = (
             token_after is not None and token_after != token_before

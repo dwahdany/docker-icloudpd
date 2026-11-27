@@ -128,6 +128,12 @@ def main() -> int:
     ):
         check(f"CLI flag {flag}", flag in cli_or_base)
 
+    # --- error reports (runner.py _LOG_LINE) ---------------------------------
+    check(
+        "log lines are '<date> <time> <LEVEL> <message>' (failure notifications)",
+        '"%(asctime)s %(levelname)-8s %(message)s"' in read("icloudpd/base.py"),
+    )
+
     mfa_provider_py = read("icloudpd/mfa_provider.py")
     check("MFAProvider has WEBUI", "WEBUI" in mfa_provider_py)
     password_provider_py = read("icloudpd/password_provider.py")

@@ -604,6 +604,24 @@ class TestAuthBudget:
         assert env.telegram.count("Downloaded") == 0
         assert env.sup.state is SupervisorState.IDLE
 
+    def test_sync_failure_quotes_icloudpd_messages_rather_than_the_debug_dump(
+        self, tmp_path, clock
+    ):
+        env = make_env(tmp_path)
+        env.runner.results = [
+            RunResult(
+                exit_code=1,
+                duration=1.0,
+                tail=['      "SafariBookmarksHasMigratedToCloudKit": true', "    }", "  }", "}"],
+                messages=["INFO     Apple iCloud Photo Library has not finished indexing yet"],
+            )
+        ]
+        env.sup.run_sync_cycle()
+
+        text = env.telegram.texts()[env.telegram.index("failed (exit 1)")]
+        assert "has not finished indexing yet" in text
+        assert "SafariBookmarks" not in text
+
 
 # --------------------------------------------------------------------------
 # 3. run_reauth

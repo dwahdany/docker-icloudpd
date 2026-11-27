@@ -37,6 +37,12 @@ logger = logging.getLogger(__name__)
 PERSONAL_LIBRARY = "PrimarySync"
 
 
+def _failure_detail(result: RunResult, lines: int = 5) -> str:
+    """What to quote from a failed run: icloudpd's last lines above DEBUG,
+    which hold its error message, or the raw tail if there are none."""
+    return "\n".join((result.messages or result.tail)[-lines:])
+
+
 class Supervisor:
     def __init__(
         self,
@@ -322,7 +328,11 @@ class Supervisor:
                 collect_output=True,
             )
             if result.exit_code != 0:
-                logger.error("--list-libraries failed (exit %d)", result.exit_code)
+                logger.error(
+                    "--list-libraries failed (exit %d): %s",
+                    result.exit_code,
+                    _failure_detail(result, lines=1),
+                )
             available = self.runner.parse_library_names(result.output_lines)
             logger.info("Available libraries: %s", available)
         resolved: list[str] = []
@@ -389,7 +399,7 @@ class Supervisor:
             )
             if result.exit_code != 0:
                 ok = False
-                detail = "\n".join(result.tail[-5:])
+                detail = _failure_detail(result)
                 if not result.timed_out and not mfa_was_pending:
                     self.notify(
                         f"❌ Sync of {library} failed (exit {result.exit_code}).\n"
@@ -466,7 +476,7 @@ class Supervisor:
             )
         else:
             restore_auth_files(backups)
-            detail = "\n".join(result.tail[-5:])
+            detail = _failure_detail(result)
             self.notify(
                 "❌ Re-authentication failed — your previous cookies were restored.\n"
                 f"Last output:\n{detail}"

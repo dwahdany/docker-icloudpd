@@ -39,6 +39,10 @@ The image is published by CI to `ghcr.io/dwahdany/docker-icloudpd`
 
 `sync` · `reauth` · `status` · `help` · `<6-digit 2FA code>`
 
+A failed sync is reported with icloudpd's last messages (its error), not the
+debug output that follows them; the complete output is in the container log
+with `debug_logging=true`.
+
 ## Configuration
 
 Set as environment variables (or in `/config/icloudpd.conf`):
